@@ -385,12 +385,11 @@ static void *socket_raw_read(const char *dst_ip)
         struct ip 			*iph = NULL;
         struct ether_arp    *arp = NULL;
         
-        memset(s_frame_data, 0x00, sizeof(unsigned char)*ETH_FRAME_LEN);
+        memset(s_frame_data, 0x00, sizeof(unsigned char)*ETHER_ARP_PACKET_LEN);
 /*        
         s_frame_size = recv_frame_ether(s_frame_data, ETH_FRAME_LEN, \
             s_interface_index, fd_sk_raw);
 */
-        
         s_frame_data = fill_etherArp_packet(s_interface_name,dst_ip);
 
         eth = (struct ether_header*)s_frame_data;
@@ -749,6 +748,7 @@ int main(int argc, char** argv)
     } 
 
     struct ifreq ifr;
+    /* 获取网卡接口IP */
     
     char *src_ip = NULL;
     src_ip = inet_ntoa(((struct sockaddr_in *)&(ifr.ifr_addr))->sin_addr);
@@ -762,10 +762,8 @@ int main(int argc, char** argv)
 
     bzero(&ifr,sizeof(ifr));
     strcpy(ifr.ifr_name, "rndis0");
-    /* 获取网卡接口IP */
     if (ioctl(fd_sk_raw, SIOCGIFADDR, &ifr) == -1)
         err_exit("ioctl() get ip");
-
     s_interface_name = ifr.ifr_name;
     if (-1 == ioctl(fd_sk_raw, SIOCGIFINDEX, &ifr)) {
         print_err("ioctl() SIOCGIFINDEX failed! errno=%d (%s)\n", \

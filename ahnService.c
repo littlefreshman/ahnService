@@ -39,7 +39,7 @@
 #include <stdarg.h>
 
 #define LOG_FILE "/data/local/ahnLog.log"
-#define AT_DEV "/dev/TTYEMS35"
+#define AT_DEV "/dev/TTYEMS30"
 #define MUX_DEV "/dev/lmi2"
 #define HEAD_LEN_MUX 9
 #define HEAD_LEN_IP_TRANS 2

@@ -134,7 +134,7 @@ static void *at_read( void *param )
             print_log("%s\n", read_buf);
             usleep(100000);
         } else {
-            sleep(1);
+            usleep(100000);
         }
     }
     close(fd_at);
@@ -225,7 +225,7 @@ static void *mux_read( void *param)
             }
         }
         else {
-            sleep(1);
+            usleep(100000);
         }
     }
     close(fd_mux);

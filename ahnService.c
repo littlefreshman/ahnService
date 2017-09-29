@@ -265,7 +265,8 @@ static void *socket_read(void* arg)
                 print_log("write to fd_at, len=%d\n", retw);
                 //inet_ntoa(client_addr) get client IP
                 print_log("%s server recv is %s\n",inet_ntoa(client_addr.sin_addr), read_buf);
-            }else if(ret > 9){
+            }else if(ret > 9)
+            {
                 retw = WriteData(fd_mux, read_buf, ret);
                 if(-1 == retw){
                     printf("write fd_mux error!\n");
@@ -275,6 +276,17 @@ static void *socket_read(void* arg)
                 strncpy(buf_remove_head, read_buf + 9,ret - 9);
                 buf_remove_head[ret-9]='\0';
                 print_log("%s server recv is %s\n",inet_ntoa(client_addr.sin_addr), buf_remove_head);
+            }else if(read_buf[0] = 0x55 && read_buf[1]== 0x0A)
+            {
+                strcat(read_buf, "\r\n");
+                retw = WriteData(fd_at, read_buf, ret+2);
+                if(-1 == retw){
+                    printf("write fd_at error!\n");
+                    exit(1);
+                }
+                print_log("write to fd_at, len=%d\n", retw);
+                //inet_ntoa(client_addr) get client IP
+                print_log("%s server recv is %s\n",inet_ntoa(client_addr.sin_addr), read_buf);
             }
         }
     }

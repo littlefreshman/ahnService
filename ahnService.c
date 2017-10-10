@@ -8,24 +8,24 @@
 *-------------------------------------------------------------------------------------------------
 *  Change History:
 *-------------------------------------------------------------------------------------------------
-*  Date				Author			Description
+*  Date             Author          Description
 *-------------------------------------------------------------------------------------------------
 *  2017-07-12       qige            create
-*  2017-08-04		qige			init 4 thread: at_read,mux_read,socket_read,socket_raw_read;
-*  2017-08-17		qige			finish socket_raw_read & mux_read;
+*  2017-08-04       qige            init 4 thread: at_read,mux_read,socket_read,socket_raw_read;
+*  2017-08-17       qige            finish socket_raw_read & mux_read;
 **************************************************************************************************/
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
-#include<errno.h>
-#include<sys/types.h>
-#include<sys/socket.h>
-#include<netinet/in.h>
-#include<termios.h>
-#include<sys/types.h>
-#include<sys/stat.h>
-#include<fcntl.h>
-#include<sys/ioctl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <termios.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <netinet/if_ether.h>//ether_arp
@@ -172,42 +172,42 @@ static void *mux_read( void *param)
                 eth = (struct ether_header*)buf_remove_head;
                 ether_type = htons(eth->ether_type);
 
-				switch(ether_type) {
-				    case ETHERTYPE_ARP: {
-				    	arp = (struct ether_arp*)(buf_remove_head + HDR_LEN_ETH);
-				    	#if xdebug
-		                    fprintf(flog,"++++++++++++++++recieve ETHERTYPE_ARP from CP+++++++++++++++++\n");
-		                    fprintf(flog,"========frame size:%d\n", frame_size);
-		                    dump_frame_ether(eth);
-		                    dump_frame_arp  (arp);
-		                    dump_frame_byte(read_buf,ret);
-		                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-		                    fprintf(flog,"\n");
-		                #endif
-				    	break;
-				    }
-				    case ETHERTYPE_IP: {
-				    	iph   = (struct ip*)(buf_remove_head + HDR_LEN_ETH);
-				        #if xdebug
-				            fprintf(flog,"+++++++++++++++++++recieve ETHERTYPE_IP from cp++++++++++++++++++++++\n");
+                switch(ether_type) {
+                    case ETHERTYPE_ARP: {
+                        arp = (struct ether_arp*)(buf_remove_head + HDR_LEN_ETH);
+                        #if xdebug
+                            fprintf(flog,"++++++++++++++++recieve ETHERTYPE_ARP from CP+++++++++++++++++\n");
+                            fprintf(flog,"========frame size:%d\n", frame_size);
+                            dump_frame_ether(eth);
+                            dump_frame_arp  (arp);
+                            dump_frame_byte(read_buf,ret);
+                            fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                            fprintf(flog,"\n");
+                        #endif
+                        break;
+                    }
+                    case ETHERTYPE_IP: {
+                        iph   = (struct ip*)(buf_remove_head + HDR_LEN_ETH);
+                        #if xdebug
+                            fprintf(flog,"+++++++++++++++++++recieve ETHERTYPE_IP from cp++++++++++++++++++++++\n");
                             fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++\n");
                             fprintf(flog,"this ETHERTYPE_IP identification is =0x%x\n", htons(iph->ip_id));
 
                             fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++\n");
 
-				            fprintf(flog,"========frame size:%d\n", frame_size);
-				            dump_frame_ether(eth);
-				            dump_frame_ip(iph);
-				            dump_frame_byte(read_buf,ret);
-				            fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-				            fprintf(flog,"\n");
-				        #endif
-				    	break;
-				    }
-				    default: {
-				    	break;
-				    }
-				}
+                            fprintf(flog,"========frame size:%d\n", frame_size);
+                            dump_frame_ether(eth);
+                            dump_frame_ip(iph);
+                            dump_frame_byte(read_buf,ret);
+                            fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                            fprintf(flog,"\n");
+                        #endif
+                        break;
+                    }
+                    default: {
+                        break;
+                    }
+                }
                 
                 if (frame_size != send_frame_ether( buf_remove_head, frame_size, s_interface_index, fd_sk_raw)) {
                     fprintf(flog,"send ether_frame error!\n");
@@ -276,17 +276,14 @@ static void *socket_read(void* arg)
                 strncpy(buf_remove_head, read_buf + 9,ret - 9);
                 buf_remove_head[ret-9]='\0';
                 print_log("%s server recv is %s\n",inet_ntoa(client_addr.sin_addr), buf_remove_head);
-            }else if(read_buf[0] = 0x55 && read_buf[1]== 0x0A)
+            }else if(read_buf[0] == 0x55 && read_buf[1]== 0x0A)
             {
-                strcat(read_buf, "\r\n");
-                retw = WriteData(fd_at, read_buf, ret+2);
+                retw = WriteData(fd_mux, read_buf, ret);
                 if(-1 == retw){
-                    printf("write fd_at error!\n");
+                    printf("write fd_mux error!\n");
                     exit(1);
                 }
-                print_log("write to fd_at, len=%d\n", retw);
-                //inet_ntoa(client_addr) get client IP
-                print_log("%s server recv is %s\n",inet_ntoa(client_addr.sin_addr), read_buf);
+                print_log("write to fd_mux, len=%d\n", retw);
             }
         }
     }
@@ -301,7 +298,7 @@ static void *socket_raw_read(void* arg)
     while(1) {
         uint16_t ether_type = 0;
         struct ether_header* eth = NULL;
-        struct ip 			*iph = NULL;
+        struct ip           *iph = NULL;
         struct ether_arp    *arp = NULL;
         
         memset(s_frame_data, 0x00, sizeof(unsigned char)*ETH_FRAME_LEN);
@@ -320,7 +317,7 @@ static void *socket_raw_read(void* arg)
                 fprintf(flog,"arp_tpa=%d.%d.%d.%d\n", \
                     arp->arp_tpa[0], arp->arp_tpa[1], arp->arp_tpa[2], \
                     arp->arp_tpa[3]);
-				
+                
                 //printf("ip_local=%s  \n", inet_ntoa(s_interface_ip));
                 
                 fprintf(flog,"ip_local=%d.%d.%d.%d\n", \
@@ -335,13 +332,13 @@ static void *socket_raw_read(void* arg)
                         (((s_interface_ip.s_addr>>8)&0xff) == arp->arp_tpa[1]) && \
                         (((s_interface_ip.s_addr>>16)&0xff) == arp->arp_tpa[2]) && \
                         (((s_interface_ip.s_addr>>24)&0xff) == arp->arp_tpa[3]) ) )
-               	{
-                    fprintf(flog,"data throw away!\n");
-               	}
-				else if (arp->arp_tpa[2] > 20 || arp->arp_tpa[3] > 20)
                 {
-                    fprintf(flog,"fault ip addr, data throw away!\n");
+                    fprintf(flog,"data throw away!\n");
                 }
+                // else if (arp->arp_tpa[2] > 20 || arp->arp_tpa[3] > 20)
+    //             {
+    //                 fprintf(flog,"fault ip addr, data throw away!\n");
+    //             }
                 else
                 {
                     char buf_add_flag[ETH_FRAME_LEN + 2];
@@ -379,24 +376,20 @@ static void *socket_raw_read(void* arg)
                 break;
             }
             case ETHERTYPE_IP: {
-            	iph = (struct ip*)(s_frame_data + HDR_LEN_ETH);
-            	fprintf(flog,"ip_src=%s  \n", inet_ntoa(iph->ip_src));
-    			fprintf(flog,"ip_dst=%s  \n", inet_ntoa(iph->ip_dst));
-            	fprintf(flog,"ip_local=%s  \n", inet_ntoa(s_interface_ip));
-            	
-               	if((iph->ip_src.s_addr == s_interface_ip.s_addr) || (iph->ip_dst.s_addr == s_interface_ip.s_addr))
-               	{
-                    fprintf(flog,"data throw away!\n");
-               	}
-				else if (((iph->ip_dst.s_addr>>16)&0xFF > 20) || ((iph->ip_dst.s_addr>>24)&0xFF > 20) )
+                iph = (struct ip*)(s_frame_data + HDR_LEN_ETH);
+                fprintf(flog,"ip_src=%s  \n", inet_ntoa(iph->ip_src));
+                fprintf(flog,"ip_dst=%s  \n", inet_ntoa(iph->ip_dst));
+                fprintf(flog,"ip_local=%s  \n", inet_ntoa(s_interface_ip));
+
+                if((iph->ip_src.s_addr == s_interface_ip.s_addr) || (iph->ip_dst.s_addr == s_interface_ip.s_addr))
                 {
-                    fprintf(flog,"fault ip addr, data throw away!\n");
+                    fprintf(flog,"data throw away!\n");
                 }
-                else
+                else if ((htonl(iph->ip_dst.s_addr)>>16) ==0xc0a8)
                 {
                     char buf_add_flag[ETH_FRAME_LEN + 2];
                     int i=0;
-            memset(buf_add_flag,'\0',sizeof(buf_add_flag));
+                    memset(buf_add_flag,'\0',sizeof(buf_add_flag));
                     buf_add_flag[0] = 0x55;
                     buf_add_flag[1] = 0x09;
                     //add head
@@ -436,15 +429,19 @@ static void *socket_raw_read(void* arg)
                      //fprintf(flog,"write to /dev/lmi2 used time:%f\n",timeuse); 
                     fprintf(flog,"data write to /dev/lmi2 success!\n");
                 }
+                else
+                {
+                    fprintf(flog,"fault ip addr, data throw away!\n");
+                }
                 break;
             }
             case ETHERTYPE_REVARP:{
-            	fprintf(flog,"--------------------receive ETHERTYPE_REVARP from AP-----------\n");
-            	fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-            	fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-            	fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-            	fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-            	break;
+                fprintf(flog,"--------------------receive ETHERTYPE_REVARP from AP-----------\n");
+                fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                break;
             }
             default: {
                 fprintf(flog,"----------------------ETHERTYPE_default------------------------\n");

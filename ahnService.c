@@ -533,6 +533,7 @@ static void *socket_data_read(void* arg)
             }
         }
 		usleep(100000);
+<<<<<<< HEAD
     }
     close(data_st);
     fprintf(flog,"socket_data_read thread exit.\n");
@@ -606,8 +607,84 @@ static void *socket_voice_read(void* arg)
     }
     close(voice_st);
     fprintf(flog,"socket_voice_read thread exit.\n");
+=======
+    }
+    close(data_st);
+    fprintf(flog,"socket_data_read thread exit.\n");
+>>>>>>> 73d68d78f3142cbbf6d4b656627ecda08835424e
     return NULL;
 }
+static void *socket_voice_read(void* arg)
+{
+    print_log("socket_voice_read FUNCTION  \n");
+    int ret;
+    //recv message
+    uchar read_buf[1024];
+    struct sockaddr_in client_addr;
+    socklen_t len=sizeof(client_addr);
+    while (isSocketvoiceReading)
+    {
+    	print_log("voice isSocketReading!  \n");
+        memset(read_buf,0,sizeof(read_buf));
+        memset(&client_addr,0,sizeof(client_addr));
+        ret = recvfrom(voice_st, read_buf, sizeof(read_buf), 0, (struct sockaddr *)&client_addr, &len);
+
+        #if xdebug
+            print_log("start dump socket_voice_read read_buf!!  \n");
+            dump_frame_byte(read_buf,ret);
+            print_log("ret=%d\n", ret);
+        #endif
+
+        if(ret == -1)
+        {
+            print_err("recvfrom fail: %s\n",strerror(errno));
+            break;
+        }
+        else
+        {
+            int retw;
+            uchar temp_buf[2000]={0};
+            uchar *buf_data;
+            buf_data=temp_buf;
+            uchar high_crc,low_crc;
+            unsigned short crc = 0;
+            unsigned short len = 0;
+            print_log("mux read first!\n");
+            print_log("%s server all recv is \n",inet_ntoa(client_addr.sin_addr));
+            dump_frame_byte(read_buf,ret);
+            fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+			if((read_buf[0]==0xCF)&&(read_buf[ret-1]==0xCF))
+			{
+				print_log("recv voive data\n");
+				if(ret>13)
+				{
+					memcpy(buf_data, read_buf + 4,ret - 6);
+					if((read_buf[1]==0xCE)&&(read_buf[ret-2]==0xCE)&&(read_buf[2]==0x10)&&(read_buf[3]==0xCE))
+					{
+					 	retw = WriteData(fd_mux, buf_data, ret-6);
+                     	if(-1 == retw)
+                     	{
+                      	  fprintf(flog,"write fd_mux error!\n");
+                     		exit(1);
+                     	}
+                    #if xdebug
+                        print_log("write voice to fd_mux, len=%d\n", retw);
+                        buf_data[ret-6]='\0';
+                        print_log("%s write voice to fd_mux, is:\n",inet_ntoa(client_addr.sin_addr));
+                        dump_frame_byte(buf_data,retw);
+                        fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                    #endif
+					}
+				}	
+			}
+        }
+        usleep(100000);
+    }
+    close(voice_st);
+    fprintf(flog,"socket_voice_read thread exit.\n");
+    return NULL;
+}
+
 
 
 //-----------socket_raw begin---------------------------------------------------

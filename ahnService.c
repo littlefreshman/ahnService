@@ -52,6 +52,7 @@
 #define xdebug 1
 #define xunused __attribute__((unused))
 
+#define uchar unsigned char
 #define HDR_LEN_ETH  sizeof(struct ether_header)
 #define HDR_LEN_IP   sizeof(struct ip)
 #define HDR_LEN_UDP sizeof(struct udphdr)
@@ -74,7 +75,7 @@ int connfd;
 int ser_id,st;
 struct sockaddr_in addr_send;
 
-int ReadData(int fd, char *rcv_buf,int data_len)
+int ReadData(int fd, uchar *rcv_buf,int data_len)
 {
     int len,fs_sel;
     fd_set fs_read;
@@ -95,7 +96,7 @@ int ReadData(int fd, char *rcv_buf,int data_len)
     }    
 }
 
-int WriteData(int fd, char *send_buf,int data_len)
+int WriteData(int fd, uchar *send_buf,int data_len)
 {
     int ret;
     ret = write(fd,send_buf,data_len);
@@ -113,7 +114,7 @@ int WriteData(int fd, char *send_buf,int data_len)
 static void *at_read( void *param )
 {
     int ret = 0;
-    char read_buf[1025];
+    uchar read_buf[1025];
     ssize_t sd_size;
 
     while (isATReading){
@@ -146,29 +147,31 @@ static void *mux_read( void *param)
 {
     int ret = 0;
     ssize_t sd_size;
-    char read_buf[ETH_FRAME_LEN];
+    uchar read_buf[ETH_FRAME_LEN];
     uint16_t ether_type = 0;
 
     while (isMuxReading){
         memset(read_buf, 0, sizeof(read_buf));
         ret = ReadData(fd_mux, read_buf, ETH_FRAME_LEN);
+        if (ret==-1)
+        {
+        	continue;
+        }
         if(ret > HEAD_LEN_IP_TRANS){
             //ether data, send by socket_raw
+            print_log("get ret = %d\n",ret);
             if((read_buf[0]==0x55)&&(read_buf[1]==0x10))
             {
                 int frame_size = 0;
                 frame_size = ret - HEAD_LEN_IP_TRANS;
-                char buf_remove_head[frame_size];
-                int i = 0;
-                while(i<frame_size)
-                {
-                    buf_remove_head[i]=read_buf[i+2];
-                    i++;
-                }
+
+                uchar buf_remove_head[frame_size];
                 struct ip *iph           = NULL;
                 struct ether_header *eth = NULL;
                 struct ether_arp    *arp = NULL;
-                
+
+                memset(buf_remove_head,0,frame_size);
+                memcpy(buf_remove_head,read_buf+2,frame_size);
                 eth = (struct ether_header*)buf_remove_head;
                 ether_type = htons(eth->ether_type);
 
@@ -184,35 +187,45 @@ static void *mux_read( void *param)
                             fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
                             fprintf(flog,"\n");
                         #endif
+                        if (frame_size != send_frame_ether( buf_remove_head, frame_size, s_interface_index, fd_sk_raw)) {
+                            fprintf(flog,"send ether_frame arp error!\n");
+                            }
+                        print_log("send frame_mac arp success. len=%d\n", frame_size);
                         break;
                     }
                     case ETHERTYPE_IP: {
-                        iph   = (struct ip*)(buf_remove_head + HDR_LEN_ETH);
-                        #if xdebug
-                            fprintf(flog,"+++++++++++++++++++recieve ETHERTYPE_IP from cp++++++++++++++++++++++\n");
-                            fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++\n");
-                            fprintf(flog,"this ETHERTYPE_IP identification is =0x%x\n", htons(iph->ip_id));
+                        int data_offset = 0;
+                        uchar * ip_read_buf;
+                        ip_read_buf = read_buf;
+                        while(ip_read_buf[0]==0x55 && ip_read_buf[1]==0x10)
+                        {
+                            iph   = (struct ip*)(ip_read_buf + HDR_LEN_ETH+2);
+                            data_offset = htons(iph->ip_len) + HDR_LEN_ETH + HEAD_LEN_IP_TRANS;
+                            uchar ip_buf_remove_head [data_offset-HEAD_LEN_IP_TRANS];
+                            memset(ip_buf_remove_head,0,data_offset-HEAD_LEN_IP_TRANS);
+                            memcpy(ip_buf_remove_head,ip_read_buf + HEAD_LEN_IP_TRANS,htons(iph->ip_len) + HDR_LEN_ETH);
+                            
+                            #if xdebug
+                                fprintf(flog,"+++++++++++++recieve ETHERTYPE_IP from cp++++++++++++++++++\n");
+                                dump_frame_ether(eth);
+                                dump_frame_ip(iph);
+                                dump_frame_byte(ip_buf_remove_head,htons(iph->ip_len) + HDR_LEN_ETH);
+                                fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                                fprintf(flog,"\n");
+                            #endif
 
-                            fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++\n");
-
-                            fprintf(flog,"========frame size:%d\n", frame_size);
-                            dump_frame_ether(eth);
-                            dump_frame_ip(iph);
-                            dump_frame_byte(read_buf,ret);
-                            fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-                            fprintf(flog,"\n");
-                        #endif
+                            if (frame_size != send_frame_ether(ip_buf_remove_head, htons(iph->ip_len) + HDR_LEN_ETH, s_interface_index, fd_sk_raw)) {
+                                fprintf(flog,"send ether_frame error!\n");
+                            }
+                            print_log("send frame_mac success. len=%d\n", frame_size);
+                            ip_read_buf = ip_read_buf+ data_offset;
+                        } 
                         break;
                     }
                     default: {
                         break;
                     }
                 }
-                
-                if (frame_size != send_frame_ether( buf_remove_head, frame_size, s_interface_index, fd_sk_raw)) {
-                    fprintf(flog,"send ether_frame error!\n");
-                }
-                print_log("send frame_mac success. len=%d\n", frame_size);
             }
             else{//mux data, send by socket
                 sd_size=sendto(st, read_buf, ret, 0, (struct sockaddr *)&addr_send,sizeof(addr_send));
@@ -221,7 +234,10 @@ static void *mux_read( void *param)
                     print_err("sendto fail:%s\n",strerror(errno));
                     break;
                 }
+                print_log("++++++++++++++++send to android data+++++++++++++++\n");
+                dump_frame_byte(read_buf,sd_size);
                 print_log("send mux data success, len=%d\n", (int)sd_size);
+                print_log("+++++++++++++++++++++++++++++++++++++++++++++++++++\n");
             }
         }
         else {
@@ -237,7 +253,7 @@ static void *socket_read(void* arg)
 {
     int ret;
     //recv message
-    char read_buf[1024];
+    uchar read_buf[1024];
     struct sockaddr_in client_addr;
     socklen_t len=sizeof(client_addr);
     while (isSocketReading)
@@ -253,14 +269,17 @@ static void *socket_read(void* arg)
         else
         {
             int retw;
-            char buf_remove_head[ret-HEAD_LEN_MUX];
+            uchar buf_remove_head[ret-HEAD_LEN_MUX];
             //check if start with 'at/AT'
             if((read_buf[0]=='a'||read_buf[0]=='A') && (read_buf[1]=='t'||read_buf[1]=='T')){
                 strcat(read_buf, "\r\n");
                 retw = WriteData(fd_at, read_buf, ret+2);
                 if(-1 == retw){
-                    printf("write fd_at error!\n");
-                    exit(1);
+                    fprintf(flog,"write fd_at error!\n");
+                    if (-1 == WriteData(fd_mux, read_buf, ret))
+                    {
+                    	fprintf(flog,"write fd_mux error!\n");
+                    }
                 }
                 print_log("write to fd_at, len=%d\n", retw);
                 //inet_ntoa(client_addr) get client IP
@@ -269,20 +288,45 @@ static void *socket_read(void* arg)
             {
                 retw = WriteData(fd_mux, read_buf, ret);
                 if(-1 == retw){
-                    printf("write fd_mux error!\n");
-                    exit(1);
+                    fprintf(flog,"write fd_mux error!\n");
+                    // exit(1);
+                    if (-1 == WriteData(fd_mux, read_buf, ret))
+                    {
+                    	fprintf(flog,"write fd_mux error!\n");
+                    }
                 }
                 print_log("write to fd_mux, len=%d\n", retw);
-                strncpy(buf_remove_head, read_buf + 9,ret - 9);
+                memcpy(buf_remove_head, read_buf + 7,ret - 9);
                 buf_remove_head[ret-9]='\0';
-                print_log("%s server recv is %s\n",inet_ntoa(client_addr.sin_addr), buf_remove_head);
-            }else if(read_buf[0] == 0x55 && read_buf[1]== 0x0A)
+                
+                print_log("%s server recv is \n",inet_ntoa(client_addr.sin_addr));
+                dump_frame_byte(buf_remove_head,ret-9);
+                fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+
+                print_log("%s server all recv is \n",inet_ntoa(client_addr.sin_addr));
+                dump_frame_byte(read_buf,ret);
+                fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+
+                #if xdebug
+                if(read_buf[0] == 0x55 && read_buf[1]== 0x07)
+                {
+            		fprintf(flog,"++++++++++++receive frame class is 0x5507 from AP+++++++++++++++\n");
+            		dump_frame_byte(read_buf);
+            		fprintf(flog,"++++++++++++frame class is 0x5507 is finish!++++++++++++++++++++\n");
+                }
+                #endif
+            }
+            else if(read_buf[0] == 0x55 && read_buf[1]== 0x0A)
             {
                 retw = WriteData(fd_mux, read_buf, ret);
                 if(-1 == retw){
-                    printf("write fd_mux error!\n");
-                    exit(1);
+                    fprintf(flog,"write fd_mux error!\n");
+                    // exit(1);
+                    if(-1 == WriteData(fd_mux, read_buf, ret)){
+                       fprintf(flog,"write fd_mux error!\n"); 
+                    }
                 }
+                print_log("write to fd_mux is control message\n");
                 print_log("write to fd_mux, len=%d\n", retw);
             }
         }
@@ -301,7 +345,7 @@ static void *socket_raw_read(void* arg)
         struct ip           *iph = NULL;
         struct ether_arp    *arp = NULL;
         
-        memset(s_frame_data, 0x00, sizeof(unsigned char)*ETH_FRAME_LEN);
+        memset(s_frame_data, 0x00, sizeof(uchar)*ETH_FRAME_LEN);
         s_frame_size = recv_frame_ether(s_frame_data, ETH_FRAME_LEN, \
             s_interface_index, fd_sk_raw);
 
@@ -335,13 +379,9 @@ static void *socket_raw_read(void* arg)
                 {
                     fprintf(flog,"data throw away!\n");
                 }
-                // else if (arp->arp_tpa[2] > 20 || arp->arp_tpa[3] > 20)
-    //             {
-    //                 fprintf(flog,"fault ip addr, data throw away!\n");
-    //             }
                 else
                 {
-                    char buf_add_flag[ETH_FRAME_LEN + 2];
+                    uchar buf_add_flag[ETH_FRAME_LEN + 2];
                     int i=0;
                     memset(buf_add_flag,'\0',sizeof(buf_add_flag));
                     buf_add_flag[0] = 0x55;
@@ -385,9 +425,9 @@ static void *socket_raw_read(void* arg)
                 {
                     fprintf(flog,"data throw away!\n");
                 }
-                else if ((htonl(iph->ip_dst.s_addr)>>16) ==0xc0a8)
+                else if ((htonl(iph->ip_dst.s_addr)>>16) ==0xc0a8&&((htonl(iph->ip_dst.s_addr)&0xff)!=255))
                 {
-                    char buf_add_flag[ETH_FRAME_LEN + 2];
+                    uchar buf_add_flag[ETH_FRAME_LEN + 2];
                     int i=0;
                     memset(buf_add_flag,'\0',sizeof(buf_add_flag));
                     buf_add_flag[0] = 0x55;
@@ -400,10 +440,7 @@ static void *socket_raw_read(void* arg)
 
                     #if xdebug
                         fprintf(flog,"++++++++++++++receive ETHERTYPE_IP from AP+++++++++++++++++++\n");
-                        fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++\n");
-                        fprintf(flog,"this ETHERTYPE_IP identification is =0x%x\n", htons(iph->ip_id));
 
-                        fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++\n");
                         fprintf(flog,"========frame size:%d\n", s_frame_size);
                         dump_frame_ether(eth);
                         dump_frame_ip(iph);
@@ -411,10 +448,7 @@ static void *socket_raw_read(void* arg)
                         fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
                         fprintf(flog,"\n");
                     #endif
-                     struct timeval tpstart,tpend;
-                     float timeuse;
- 
-                     gettimeofday(&tpstart,0);
+
                     if(-1 == WriteData(fd_mux, buf_add_flag, s_frame_size + HEAD_LEN_IP_TRANS)){
                         fprintf(flog,"write to /dev/lmi2 error!\n");
 //                        exit(1);
@@ -423,9 +457,6 @@ static void *socket_raw_read(void* arg)
                            fprintf(flog,"write to /dev/lmi2 error!\n"); 
                         }
                     }
-                     gettimeofday(&tpend,0); 
-                     timeuse=1000000*(tpend.tv_sec-tpstart.tv_sec) + tpend.tv_usec-tpstart.tv_usec; 
-                     timeuse/=1000000;
                      //fprintf(flog,"write to /dev/lmi2 used time:%f\n",timeuse); 
                     fprintf(flog,"data write to /dev/lmi2 success!\n");
                 }

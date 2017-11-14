@@ -202,7 +202,7 @@ static void *at_read( void *param )
 
     while (isATReading){
         ret = ReadData(fd_at, read_buf, 1024);
-        print_log("%s\n", read_buf);
+        // print_log("%s\n", read_buf);
         if(ret > 0){
             print_log("at_read, len=%d\n", ret);
 			uchar read_temp_buf[1024+8]={0};
@@ -300,7 +300,7 @@ static void *mux_read( void *param)
                                 fprintf(flog,"\n");
                             #endif
 
-                            if (frame_size != send_frame_ether(ip_buf_remove_head, htons(iph->ip_len) + HDR_LEN_ETH, s_interface_index, fd_sk_raw)) {
+                            if ((data_offset-HEAD_LEN_IP_TRANS) != send_frame_ether(ip_buf_remove_head, htons(iph->ip_len) + HDR_LEN_ETH, s_interface_index, fd_sk_raw)) {
                                 fprintf(flog,"send ether_frame error!\n");
                             }
                             print_log("send frame_mac success. len=%d\n", frame_size);
@@ -352,7 +352,7 @@ else if((read_buf[0]==0x55)&&((read_buf[1]==0x04)||(read_buf[1]==0x05)||(read_bu
             }
         }
         else {
-            usleep(100000);
+            usleep(1000);
         }
     }
     close(fd_mux);
@@ -419,6 +419,7 @@ static void *socket_at_read(void* arg)
                                 if(-1 == retw)
                                 {
                                     fprintf(flog,"write fd_at error!\n");
+                                    sleep(1);
                                     retw = WriteData(fd_at, buf_data, ret-6);
 				                    if (-1 == retw)
 				                    {
@@ -437,7 +438,7 @@ static void *socket_at_read(void* arg)
 				}
 			}
         }
-		usleep(100000);
+		usleep(1000);
     }
     close(at_st);
     fprintf(flog,"socket_at_read thread exit.\n");
@@ -505,7 +506,8 @@ static void *socket_data_read(void* arg)
                                 if(-1 == retw)
                                 {
                                     fprintf(flog,"write fd_mux error!\n");
-                                    retw = WriteData(fd_mux, buf_data, ret-8)
+                                    sleep(1);
+                                    retw = WriteData(fd_mux, buf_data, ret-8);
 					                if (-1 == retw)
 					                {
 					                	fprintf(flog,"write fd_mux error!\n");
@@ -524,6 +526,7 @@ static void *socket_data_read(void* arg)
                                 retw = WriteData(fd_mux, buf_data, ret-8);
                                 if(-1 == retw){
                                     fprintf(flog,"write fd_mux traffic control message error!\n");
+                                    sleep(1);
                                     retw = WriteData(fd_mux, buf_data, ret-8);
                                     if (-1 == retw)
                                     {
@@ -540,7 +543,7 @@ static void *socket_data_read(void* arg)
                 }
             }
         }
-		usleep(100000);
+		usleep(1000);
     }
     close(data_st);
     fprintf(flog,"socket_data_read thread exit.\n");
@@ -600,6 +603,7 @@ static void *socket_voice_read(void* arg)
                      	if(-1 == retw)
                      	{
                             fprintf(flog,"write fd_mux error!\n");
+                            sleep(1);
                             retw = WriteData(fd_mux, buf_data, ret-6);
                             if (-1 == retw)
                             {
@@ -618,7 +622,7 @@ static void *socket_voice_read(void* arg)
 				}	
 			}
         }
-        usleep(100000);
+        usleep(1000);
     }
     close(voice_st);
     fprintf(flog,"socket_voice_read thread exit.\n");

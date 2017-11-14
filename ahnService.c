@@ -265,12 +265,12 @@ static void *mux_read( void *param)
                     case ETHERTYPE_ARP: {
                         arp = (struct ether_arp*)(buf_remove_head + HDR_LEN_ETH);
                         #if xdebug
-                            fprintf(flog,"++++++++++++++++recieve ETHERTYPE_ARP from CP+++++++++++++++++\n");
+                            fprintf(flog,"+++++++++++recieve ETHERTYPE_ARP from CP+++++++++++++\n");
                             fprintf(flog,"========frame size:%d\n", frame_size);
                             dump_frame_ether(eth);
                             dump_frame_arp  (arp);
                             dump_frame_byte(read_buf,ret);
-                            fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                            fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
                             fprintf(flog,"\n");
                         #endif
                         if (frame_size != send_frame_ether( buf_remove_head, frame_size, s_interface_index, fd_sk_raw)) {
@@ -292,11 +292,11 @@ static void *mux_read( void *param)
                             memcpy(ip_buf_remove_head,ip_read_buf + HEAD_LEN_IP_TRANS,htons(iph->ip_len) + HDR_LEN_ETH);
                             
                             #if xdebug
-                                fprintf(flog,"+++++++++++++recieve ETHERTYPE_IP from cp++++++++++++++++++\n");
+                                fprintf(flog,"+++++++++++recieve ETHERTYPE_IP from cp++++++++++++++\n");
                                 dump_frame_ether(eth);
                                 dump_frame_ip(iph);
                                 dump_frame_byte(ip_buf_remove_head,htons(iph->ip_len) + HDR_LEN_ETH);
-                                fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                                fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
                                 fprintf(flog,"\n");
                             #endif
 
@@ -323,10 +323,12 @@ else if((read_buf[0]==0x55)&&((read_buf[1]==0x04)||(read_buf[1]==0x05)||(read_bu
                 print_err("sendto fail:%s\n",strerror(errno));
                 break;
             }
-                fprintf(flog,"++++++++++++++++send to android data+++++++++++++++\n");
+            #if xdebug
+                fprintf(flog,"++++++++++++++++send to android data+++++++++++++++++\n");
                 dump_frame_byte(read_temp_buf,sd_size);
-                fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
                 print_log("send mux voice success, len=%d\n", (int)sd_size);
+            #endif
         }
 		else if((read_buf[0]==0x55)&&(read_buf[1]==0x08))
 	    {//mux data, send by socket
@@ -340,10 +342,13 @@ else if((read_buf[0]==0x55)&&((read_buf[1]==0x04)||(read_buf[1]==0x05)||(read_bu
                     print_err("sendto fail:%s\n",strerror(errno));
                     break;
                 }
-                fprintf(flog,"++++++++++++++++send to android data+++++++++++++++\n");
-                dump_frame_byte(read_temp_buf,sd_size);
-                fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-                print_log("send mux data success, len=%d\n", (int)sd_size);
+                #if xdebug
+                    fprintf(flog,"++++++++++++++++send to android data+++++++++++++++++\n");
+                    dump_frame_byte(read_temp_buf,sd_size);
+                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                    print_log("send mux data success, len=%d\n", (int)sd_size);
+                #endif
+
             }
         }
         else {
@@ -390,7 +395,7 @@ static void *socket_at_read(void* arg)
             print_log("mux read first!\n");
             print_log("%s server all recv is \n",inet_ntoa(client_addr.sin_addr));
             dump_frame_byte(read_buf,ret);
-            fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+            fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
             if((read_buf[0]==0xCE)&&(read_buf[ret-1]==0xCE))
             {
                 memcpy(buf_data, read_buf + 7,ret - 8);
@@ -414,7 +419,8 @@ static void *socket_at_read(void* arg)
                                 if(-1 == retw)
                                 {
                                     fprintf(flog,"write fd_at error!\n");
-				                    if (-1 == WriteData(fd_mux, read_buf, ret))
+                                    retw = WriteData(fd_at, buf_data, ret-6);
+				                    if (-1 == retw)
 				                    {
 				                    	fprintf(flog,"write fd_mux error!\n");
 				                    }
@@ -475,7 +481,7 @@ static void *socket_data_read(void* arg)
                 print_log("mux read first!\n");
                 print_log("%s server all recv is \n",inet_ntoa(client_addr.sin_addr));
                 dump_frame_byte(read_buf,ret);
-                fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
             #endif
             if((read_buf[0]==0xCE)&&(read_buf[ret-1]==0xCE))
             {
@@ -498,8 +504,9 @@ static void *socket_data_read(void* arg)
                                 retw = WriteData(fd_mux, buf_data, ret-8);
                                 if(-1 == retw)
                                 {
-                                     fprintf(flog,"write fd_mux error!\n");
-					                if (-1 == WriteData(fd_mux, read_buf, ret))
+                                    fprintf(flog,"write fd_mux error!\n");
+                                    retw = WriteData(fd_mux, buf_data, ret-8)
+					                if (-1 == retw)
 					                {
 					                	fprintf(flog,"write fd_mux error!\n");
 					                }
@@ -509,7 +516,7 @@ static void *socket_data_read(void* arg)
                                     buf_data[ret-8]='\0';
     				                print_log("%s socket_data_read server all recv is \n",inet_ntoa(client_addr.sin_addr));
     				                dump_frame_byte(read_buf,ret);
-                                    fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
                                 #endif
                             }
 							else if(read_buf[7] == 0x55 && read_buf[8]== 0x0A)
@@ -517,7 +524,8 @@ static void *socket_data_read(void* arg)
                                 retw = WriteData(fd_mux, buf_data, ret-8);
                                 if(-1 == retw){
                                     fprintf(flog,"write fd_mux traffic control message error!\n");
-                                    if (-1 == WriteData(fd_mux, buf_data, ret-8))
+                                    retw = WriteData(fd_mux, buf_data, ret-8);
+                                    if (-1 == retw)
                                     {
                                         fprintf(flog,"write fd_mux traffic control message error!\n");
                                     }
@@ -533,12 +541,12 @@ static void *socket_data_read(void* arg)
             }
         }
 		usleep(100000);
-<<<<<<< HEAD
     }
     close(data_st);
     fprintf(flog,"socket_data_read thread exit.\n");
     return NULL;
 }
+
 static void *socket_voice_read(void* arg)
 {
     print_log("socket_voice_read FUNCTION  \n");
@@ -574,10 +582,12 @@ static void *socket_voice_read(void* arg)
             uchar high_crc,low_crc;
             unsigned short crc = 0;
             unsigned short len = 0;
-            print_log("mux read first!\n");
-            print_log("%s server all recv is \n",inet_ntoa(client_addr.sin_addr));
-            dump_frame_byte(read_buf,ret);
-            fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+            #if xdebug
+                print_log("mux read first!\n");
+                print_log("%s server all recv is \n",inet_ntoa(client_addr.sin_addr));
+                dump_frame_byte(read_buf,ret);
+                fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+            #endif
 			if((read_buf[0]==0xCF)&&(read_buf[ret-1]==0xCF))
 			{
 				print_log("recv voive data\n");
@@ -589,91 +599,21 @@ static void *socket_voice_read(void* arg)
 					 	retw = WriteData(fd_mux, buf_data, ret-6);
                      	if(-1 == retw)
                      	{
-                      	  fprintf(flog,"write fd_mux error!\n");
-                     		exit(1);
+                            fprintf(flog,"write fd_mux error!\n");
+                            retw = WriteData(fd_mux, buf_data, ret-6);
+                            if (-1 == retw)
+                            {
+                                fprintf(flog,"write fd_mux error!\n");
+                            }
+                     		// exit(1);
                      	}
-                    #if xdebug
-                        print_log("write voice to fd_mux, len=%d\n", retw);
-                        buf_data[ret-6]='\0';
-                        print_log("%s write voice to fd_mux, is:\n",inet_ntoa(client_addr.sin_addr));
-                        dump_frame_byte(buf_data,retw);
-                        fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-                    #endif
-					}
-				}	
-			}
-        }
-        usleep(100000);
-    }
-    close(voice_st);
-    fprintf(flog,"socket_voice_read thread exit.\n");
-=======
-    }
-    close(data_st);
-    fprintf(flog,"socket_data_read thread exit.\n");
->>>>>>> 73d68d78f3142cbbf6d4b656627ecda08835424e
-    return NULL;
-}
-static void *socket_voice_read(void* arg)
-{
-    print_log("socket_voice_read FUNCTION  \n");
-    int ret;
-    //recv message
-    uchar read_buf[1024];
-    struct sockaddr_in client_addr;
-    socklen_t len=sizeof(client_addr);
-    while (isSocketvoiceReading)
-    {
-    	print_log("voice isSocketReading!  \n");
-        memset(read_buf,0,sizeof(read_buf));
-        memset(&client_addr,0,sizeof(client_addr));
-        ret = recvfrom(voice_st, read_buf, sizeof(read_buf), 0, (struct sockaddr *)&client_addr, &len);
-
-        #if xdebug
-            print_log("start dump socket_voice_read read_buf!!  \n");
-            dump_frame_byte(read_buf,ret);
-            print_log("ret=%d\n", ret);
-        #endif
-
-        if(ret == -1)
-        {
-            print_err("recvfrom fail: %s\n",strerror(errno));
-            break;
-        }
-        else
-        {
-            int retw;
-            uchar temp_buf[2000]={0};
-            uchar *buf_data;
-            buf_data=temp_buf;
-            uchar high_crc,low_crc;
-            unsigned short crc = 0;
-            unsigned short len = 0;
-            print_log("mux read first!\n");
-            print_log("%s server all recv is \n",inet_ntoa(client_addr.sin_addr));
-            dump_frame_byte(read_buf,ret);
-            fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-			if((read_buf[0]==0xCF)&&(read_buf[ret-1]==0xCF))
-			{
-				print_log("recv voive data\n");
-				if(ret>13)
-				{
-					memcpy(buf_data, read_buf + 4,ret - 6);
-					if((read_buf[1]==0xCE)&&(read_buf[ret-2]==0xCE)&&(read_buf[2]==0x10)&&(read_buf[3]==0xCE))
-					{
-					 	retw = WriteData(fd_mux, buf_data, ret-6);
-                     	if(-1 == retw)
-                     	{
-                      	  fprintf(flog,"write fd_mux error!\n");
-                     		exit(1);
-                     	}
-                    #if xdebug
-                        print_log("write voice to fd_mux, len=%d\n", retw);
-                        buf_data[ret-6]='\0';
-                        print_log("%s write voice to fd_mux, is:\n",inet_ntoa(client_addr.sin_addr));
-                        dump_frame_byte(buf_data,retw);
-                        fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-                    #endif
+                        #if xdebug
+                            print_log("write voice to fd_mux, len=%d\n", retw);
+                            buf_data[ret-6]='\0';
+                            print_log("%s write voice to fd_mux, is:\n",inet_ntoa(client_addr.sin_addr));
+                            dump_frame_byte(buf_data,retw);
+                            fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                        #endif
 					}
 				}	
 			}
@@ -684,8 +624,6 @@ static void *socket_voice_read(void* arg)
     fprintf(flog,"socket_voice_read thread exit.\n");
     return NULL;
 }
-
-
 
 //-----------socket_raw begin---------------------------------------------------
 static void *socket_raw_read(void* arg)
@@ -752,12 +690,12 @@ static void *socket_raw_read(void* arg)
                         i++;
                     }
                     #if xdebug
-                        fprintf(flog,"++++++++++++++++receive ETHERTYPE_ARP from AP++++++++++++++++++\n");
+                        fprintf(flog,"+++++++++receive ETHERTYPE_ARP from AP+++++++++++++++\n");
                         fprintf(flog,"========frame size:%d\n", s_frame_size);
                         dump_frame_ether(eth);
                         dump_frame_arp  (arp);
                         dump_frame_byte(buf_add_flag, s_frame_size + HEAD_LEN_IP_TRANS);
-                        fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                        fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
                         fprintf(flog,"\n");
                     #endif
                 
@@ -800,13 +738,13 @@ static void *socket_raw_read(void* arg)
                     }
 
                     #if xdebug
-                        fprintf(flog,"++++++++++++++receive ETHERTYPE_IP from AP+++++++++++++++++++\n");
+                        fprintf(flog,"+++++++++++receive ETHERTYPE_IP from AP++++++++++++++\n");
 
                         fprintf(flog,"========frame size:%d\n", s_frame_size);
                         dump_frame_ether(eth);
                         dump_frame_ip(iph);
                         dump_frame_byte(buf_add_flag, s_frame_size + HEAD_LEN_IP_TRANS);
-                        fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                        fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
                         fprintf(flog,"\n");
                     #endif
 
@@ -828,17 +766,17 @@ static void *socket_raw_read(void* arg)
             }
             case ETHERTYPE_REVARP:{
                 #if xdebug
-                    fprintf(flog,"--------------------receive ETHERTYPE_REVARP from AP-----------\n");
-                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                    fprintf(flog,"++++++++receive ETHERTYPE_REVARP from AP+++++++++++++\n");
+                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+                    fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
                 #endif
                 break;
 
             }
             default: {
-                fprintf(flog,"----------------------ETHERTYPE_default------------------------\n");
+                fprintf(flog,"++++++++++++ETHERTYPE_default+++++++++++++\n");
                 break;
             }
         }

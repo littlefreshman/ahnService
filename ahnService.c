@@ -38,11 +38,13 @@
 #include <sys/timeb.h>
 #include <stdarg.h>
 
+#define uchar unsigned char
 #define LOG_FILE "/data/local/ahnLog.log"
 #define AT_DEV "/dev/TTYEMS30"
 #define MUX_DEV "/dev/lmi2"
 #define HEAD_LEN_MUX 9
 #define HEAD_LEN_IP_TRANS 2
+#define HEAD_LEN_ARP_TRANS HEAD_LEN_IP_TRANS
 
 #define print_log(fmt, ...) \
     fprintf(flog,"[%04d]%s() " fmt, __LINE__, __FUNCTION__, ####__VA_ARGS__)
@@ -52,15 +54,17 @@
 #define xdebug 1
 #define xunused __attribute__((unused))
 
-#define uchar unsigned char
+#define HDR_LEN_ETHARP  42
 #define HDR_LEN_ETH  sizeof(struct ether_header)
 #define HDR_LEN_IP   sizeof(struct ip)
 #define HDR_LEN_UDP sizeof(struct udphdr)
-
-static unsigned char  s_frame_data[ETH_FRAME_LEN];
+#define TRAFFIC_FRAME_CRC 2
+#define VOICE_HEAD 7
+#define DATE_HEAD 9
+static uchar  s_frame_data[ETH_FRAME_LEN];
 static unsigned int   s_frame_size = 0;
 static int            s_interface_index = -1;
-static unsigned char  s_interface_mac[ETH_ALEN];
+static uchar  s_interface_mac[ETH_ALEN];
 static struct in_addr s_interface_ip;
 
 FILE *flog;
@@ -147,101 +151,167 @@ static void *mux_read( void *param)
 {
     int ret = 0;
     ssize_t sd_size;
-    uchar read_buf[ETH_FRAME_LEN];
+    uchar read_buf[ETH_FRAME_LEN*10]={0};
     uint16_t ether_type = 0;
-
+	uchar * read_buf_point;
+	
     while (isMuxReading){
         memset(read_buf, 0, sizeof(read_buf));
-        ret = ReadData(fd_mux, read_buf, ETH_FRAME_LEN);
+        ret = ReadData(fd_mux, read_buf, ETH_FRAME_LEN*10);
+        dump_frame_byte(read_buf,ret);
+		read_buf_point=read_buf;
         if (ret==-1)
         {
         	continue;
         }
         if(ret > HEAD_LEN_IP_TRANS){
             //ether data, send by socket_raw
+            int total_len=0;
+			int data_offset = 0;
+			total_len=ret;
             print_log("get ret = %d\n",ret);
-            if((read_buf[0]==0x55)&&(read_buf[1]==0x10))
-            {
-                int frame_size = 0;
-                frame_size = ret - HEAD_LEN_IP_TRANS;
+			while(total_len>0)
+			{
+				if((read_buf_point[0]==0x55)&&(read_buf_point[1]==0x10))
+				{
+					struct ip *iph           = NULL;
+					struct ether_header *eth = NULL;
+					struct ether_arp    *arp = NULL;
 
-                uchar buf_remove_head[frame_size];
-                struct ip *iph           = NULL;
-                struct ether_header *eth = NULL;
-                struct ether_arp    *arp = NULL;
+					eth = (struct ether_header*)(read_buf_point + HEAD_LEN_IP_TRANS);
+					ether_type = htons(eth->ether_type);
 
-                memset(buf_remove_head,0,frame_size);
-                memcpy(buf_remove_head,read_buf+2,frame_size);
-                eth = (struct ether_header*)buf_remove_head;
-                ether_type = htons(eth->ether_type);
+					switch(ether_type) 
+					{
+						case ETHERTYPE_ARP: 
+						{
+							arp = (struct ether_arp*)(read_buf_point + HEAD_LEN_ARP_TRANS +HDR_LEN_ETH);
+							data_offset = HDR_LEN_ETHARP + HEAD_LEN_ARP_TRANS;
 
-                switch(ether_type) {
-                    case ETHERTYPE_ARP: {
-                        arp = (struct ether_arp*)(buf_remove_head + HDR_LEN_ETH);
-                        #if xdebug
-                            fprintf(flog,"++++++++++++++++recieve ETHERTYPE_ARP from CP+++++++++++++++++\n");
-                            fprintf(flog,"========frame size:%d\n", frame_size);
-                            dump_frame_ether(eth);
-                            dump_frame_arp  (arp);
-                            dump_frame_byte(read_buf,ret);
-                            fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-                            fprintf(flog,"\n");
-                        #endif
-                        if (frame_size != send_frame_ether( buf_remove_head, frame_size, s_interface_index, fd_sk_raw)) {
-                            fprintf(flog,"send ether_frame arp error!\n");
-                            }
-                        print_log("send frame_mac arp success. len=%d\n", frame_size);
-                        break;
-                    }
-                    case ETHERTYPE_IP: {
-                        int data_offset = 0;
-                        uchar * ip_read_buf;
-                        ip_read_buf = read_buf;
-                        while(ip_read_buf[0]==0x55 && ip_read_buf[1]==0x10)
-                        {
-                            iph   = (struct ip*)(ip_read_buf + HDR_LEN_ETH+2);
-                            data_offset = htons(iph->ip_len) + HDR_LEN_ETH + HEAD_LEN_IP_TRANS;
-                            uchar ip_buf_remove_head [data_offset-HEAD_LEN_IP_TRANS];
-                            memset(ip_buf_remove_head,0,data_offset-HEAD_LEN_IP_TRANS);
-                            memcpy(ip_buf_remove_head,ip_read_buf + HEAD_LEN_IP_TRANS,htons(iph->ip_len) + HDR_LEN_ETH);
-                            
-                            #if xdebug
-                                fprintf(flog,"+++++++++++++recieve ETHERTYPE_IP from cp++++++++++++++++++\n");
-                                dump_frame_ether(eth);
-                                dump_frame_ip(iph);
-                                dump_frame_byte(ip_buf_remove_head,htons(iph->ip_len) + HDR_LEN_ETH);
-                                fprintf(flog,"++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-                                fprintf(flog,"\n");
-                            #endif
+							uchar arp_buf_remove_head [HDR_LEN_ETHARP] = {0};
+							memcpy(arp_buf_remove_head,read_buf_point + HEAD_LEN_ARP_TRANS,HDR_LEN_ETHARP);	
+							#if xdebug
+								fprintf(flog,"+++++++++++recieve ETHERTYPE_ARP from CP+++++++++++++\n");
+								fprintf(flog,"========frame size:%d\n", HDR_LEN_ETHARP);
+								dump_frame_ether(eth);
+								dump_frame_arp  (arp);
+								//dump_frame_byte(read_buf,ret);
+								fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+								fprintf(flog,"\n");
+							#endif
+							if (HDR_LEN_ETHARP != send_frame_ether( arp_buf_remove_head, HDR_LEN_ETHARP, s_interface_index, fd_sk_raw)) 
+							{
+								fprintf(flog,"send ether_frame arp error!\n");
+							}
+							fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+							break;
+						}
+						case ETHERTYPE_IP:
+						{
+							iph   = (struct ip*)(read_buf_point + HDR_LEN_ETH+HEAD_LEN_IP_TRANS);
+							data_offset = htons(iph->ip_len) + HDR_LEN_ETH + HEAD_LEN_IP_TRANS;
+							uchar ip_buf_remove_head [data_offset-HEAD_LEN_IP_TRANS];
+							memset(ip_buf_remove_head,0,data_offset-HEAD_LEN_IP_TRANS);
+							memcpy(ip_buf_remove_head,read_buf_point + HEAD_LEN_IP_TRANS,htons(iph->ip_len) + HDR_LEN_ETH);	
+							#if xdebug
+							fprintf(flog,"+++++++++++recieve ETHERTYPE_IP from cp++++++++++++++\n");
+							dump_frame_ether(eth);
+							dump_frame_ip(iph);
+							dump_frame_byte(ip_buf_remove_head,htons(iph->ip_len) + HDR_LEN_ETH);
+							fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+							fprintf(flog,"\n");
+							#endif
+							if ((data_offset-HEAD_LEN_IP_TRANS) != send_frame_ether(ip_buf_remove_head, htons(iph->ip_len) + HDR_LEN_ETH, s_interface_index, fd_sk_raw)) 
+							{
+								fprintf(flog,"send ether_frame error!\n");
+							}
+					
+							print_log("send frame_mac success. len=%d\n", data_offset-HEAD_LEN_IP_TRANS);
+							fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+							break;
+						}
+						default: 
+						{
+							break;
+						}
+					}
+				}
+				else if((read_buf_point[0]==0x55)&&((read_buf_point[1]==0x04)||(read_buf_point[1]==0x05)||(read_buf_point[1]==0x06))) 
+				{//mux voice, send by socket
+					print_log(" mux voice reading! \n");
+					int packet_number=0;
+					packet_number=read_buf_point[6];
+					if(read_buf_point[1]==0x04)
+					{
+						data_offset=packet_number*12+VOICE_HEAD + TRAFFIC_FRAME_CRC;
+					}
+					else
+					{
+						data_offset=packet_number*24+VOICE_HEAD + TRAFFIC_FRAME_CRC;
+					}
+					uchar voice_buf [data_offset];
+					memset(voice_buf,0,data_offset);
+					memcpy(voice_buf,read_buf_point,data_offset);
+					sd_size=sendto(st, voice_buf, data_offset, 0, (struct sockaddr *)&addr_send,sizeof(addr_send));
+					if(sd_size==-1)
+					{
+						print_err("sendto fail:%s\n",strerror(errno));
+						break;
+					}
+					#if xdebug
+					fprintf(flog,"++++++++++++++++send to android data+++++++++++++++++\n");
+					dump_frame_byte(voice_buf,sd_size);
+					fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+					print_log("send mux voice success, len=%d\n", (int)sd_size);
+					#endif
+				}
+				else if((read_buf_point[0]==0x55)&&(read_buf_point[1]==0x08))
+				{//mux data, send by socket
+					print_log(" mux data reading! \n");
+					data_offset=(read_buf_point[7]<<8+read_buf_point[8]) + DATE_HEAD + TRAFFIC_FRAME_CRC;
+					uchar data_buf [data_offset];
+					memset(data_buf,0,data_offset);
+					memcpy(data_buf,read_buf_point,data_offset);
+					sd_size=sendto(st, data_buf, data_offset, 0, (struct sockaddr *)&addr_send,sizeof(addr_send));
+					if(sd_size==-1)
+					{
+						print_err("sendto fail:%s\n",strerror(errno));
+						break;
+					}
+					#if xdebug
+						fprintf(flog,"++++++++++++++++send to android data+++++++++++++++++\n");
+						dump_frame_byte(data_buf,sd_size);
+						fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+						print_log("send mux data success, len=%d\n", (int)sd_size);
+					#endif
 
-                            if (frame_size != send_frame_ether(ip_buf_remove_head, htons(iph->ip_len) + HDR_LEN_ETH, s_interface_index, fd_sk_raw)) {
-                                fprintf(flog,"send ether_frame error!\n");
-                            }
-                            print_log("send frame_mac success. len=%d\n", frame_size);
-                            ip_read_buf = ip_read_buf+ data_offset;
-                        } 
-                        break;
-                    }
-                    default: {
-                        break;
-                    }
-                }
-            }
-            else{//mux data, send by socket
-                sd_size=sendto(st, read_buf, ret, 0, (struct sockaddr *)&addr_send,sizeof(addr_send));
-                if(sd_size==-1)
+				}
+                else if((read_buf_point[0]==0x55)&&(read_buf_point[1]==0x0B))
                 {
-                    print_err("sendto fail:%s\n",strerror(errno));
-                    break;
+                	print_log(" mux traffic_control! \n");
+                    data_offset=6;
+                    uchar temp_buf[data_offset];
+                    memset(temp_buf,0,data_offset);
+					memcpy(temp_buf,read_buf_point,data_offset);
+					sd_size=sendto(st, temp_buf, data_offset, 0, (struct sockaddr *)&addr_send,sizeof(addr_send));
+                    if(sd_size==-1)
+					{
+						print_err("sendto fail:%s\n",strerror(errno));
+						break;
+					}
+					#if xdebug
+						fprintf(flog,"++++++++++++++++send to android data+++++++++++++++++\n");
+						dump_frame_byte(temp_buf,sd_size);
+						fprintf(flog,"+++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+						print_log("send mux data success, len=%d\n", (int)sd_size);
+					#endif
                 }
-                print_log("++++++++++++++++send to android data+++++++++++++++\n");
-                dump_frame_byte(read_buf,sd_size);
-                print_log("send mux data success, len=%d\n", (int)sd_size);
-                print_log("+++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-            }
+				read_buf_point=data_offset+read_buf_point;
+				total_len=total_len-data_offset;
+			}
         }
         else {
-            usleep(100000);
+            usleep(10000);
         }
     }
     close(fd_mux);
